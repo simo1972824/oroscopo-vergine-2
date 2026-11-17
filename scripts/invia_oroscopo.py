@@ -54,12 +54,23 @@ def page_text(html):
     return " ".join(parser.parts)
 
 
-def excerpt(html, weekday, limit=2200):
+END_MARKERS = ("tutti i segni", "ultimi pubblicati", "oroscopo della settimana",
+               "oroscopo di oggi", "oroscopo di domani")
+
+
+def excerpt(html, weekday, limit=1800):
     text = page_text(html)
-    idx = text.lower().find(weekday)
+    low = text.lower()
+    idx = low.find(weekday)
     if idx > 0:
         text = text[idx:]
-    return text[:limit]
+        low = text.lower()
+    end = len(text)
+    for marker in END_MARKERS:
+        pos = low.find(marker, 250)
+        if pos != -1 and pos < end:
+            end = pos
+    return text[:min(limit, end)].strip()
 
 
 def build_sources(day):
