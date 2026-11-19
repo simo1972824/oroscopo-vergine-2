@@ -1,6 +1,7 @@
 import os
 import smtplib
 import ssl
+import subprocess
 import sys
 from datetime import datetime
 from email.header import Header
@@ -99,11 +100,40 @@ def compose_body(label, weekday, sources, excerpts):
     return "\n".join(lines)
 
 
+MARKER = ".ultimo-invio.txt"
+
+
+def read_marker():
+    try:
+        with open(MARKER, encoding="utf-8") as fh:
+            return fh.read().strip()
+    except OSError:
+        return ""
+
+
+def push_marker(date_str):
+    token = os.environ.get("GITHUB_TOKEN", "")
+    repo = os.environ.get("GITHUB_REPOSITORY", "")
+    if not token or not repo:
+        print("Marker non pushato: GITHUB_TOKEN/GITHUB_REPOSITORY mancanti")
+        return
+    with open(MARKER, "w", encoding="utf-8") as fh:
+        fh.write(date_str + "\n")
+    remote = f"https://x-access-token:{token}@github.com/{repo}.git"
+    subprocess.run(["git", "remote", "set-url", "origin", remote], check=False)
+    subprocess.run(["git", "config", "user.email", "actions@github.com"], check=False)
+    subprocess.run(["git", "config", "user.name", "github-actions"], check=False)
+    subprocess.run(["git", "add", MARKER], check=False)
+    subprocess.run(["git", "commit", "-m", f"chore: marker invio oroscopo {date_str}"], check=False)
+    subprocess.run(["git", "push", "origin", "HEAD"], check=False)
+
+
 def main():
     manual = os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch"
     now = datetime.now(ROME)
-    if not manual and now.hour != 6:
-        print(f"Skip: ora di Roma {now:%H:%M}, invio previsto solo alle 06:00")
+    today = now.date().isoformat()
+    if not manual and read_marker() == today:
+        print(f"Skip: oroscopo del {today} già inviato oggi")
         return 0
 
     weekday = DAYS[now.weekday()]
@@ -138,6 +168,7 @@ def main():
         server.login(user, password)
         server.send_message(msg)
     print(f"Email inviata a {recipient}")
+    push_marker(today)
     return 0
 
 
